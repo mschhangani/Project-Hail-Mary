@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TWO CLOCKS — Fly a Relativistic Voyage to Tau Ceti</title>
+<meta name="description" content="An interactive, scientifically grounded simulation of a relativistic interstellar mission, inspired by Project Hail Mary.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;600&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   CROSSING — design tokens
+   Palette: deep-space ink, ion cyan, thrust amber, relativity violet
+   Type: Unbounded (display, sparingly) / Instrument Sans (body)
+         IBM Plex Mono (instrument readouts)
+   ============================================================ */
+:root{
+  --ink:#04060e;
+  --ink-2:#070b18;
+  --panel:rgba(15,21,40,.58);
+  --panel-solid:#0d1326;
+  --line:rgba(140,170,255,.16);
+  --line-strong:rgba(140,170,255,.34);
+  --text:#dfe6f5;
+  --dim:#8d99b8;
+  --faint:#5a6585;
+  --cyan:#7df0ff;
+  --cyan-deep:#2bb8d9;
+  --amber:#ffb35c;
+  --violet:#9b8cff;
+  --danger:#ff7a6e;
+  --ok:#7dffb0;
+  --radius:18px;
+  --maxw:1080px;
+  --display:'Unbounded',sans-serif;
+  --body:'Instrument Sans',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} }
+body{
+  background:var(--ink);
+  color:var(--text);
+  font-family:var(--body);
+  font-size:17px;
+  line-height:1.65;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:rgba(125,240,255,.25)}
+a{color:var(--cyan)}
+button{font-family:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:3px;border-radius:4px}
+
+/* ---------- fixed starfield canvas ---------- */
+#stars{position:fixed;inset:0;z-index:0;display:block;width:100%;height:100%}
+#vignette{position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(2,4,10,.75) 100%)}
+
+/* ---------- mission HUD dock (the signature element) ---------- */
+body{padding-bottom:132px}
+body.hud-min{padding-bottom:70px}
+#hud{position:fixed;left:50%;bottom:max(12px,env(safe-area-inset-bottom));transform:translateX(-50%);
+  z-index:40;width:min(1060px,calc(100% - 20px));
+  background:linear-gradient(180deg,rgba(11,16,34,.82),rgba(5,8,18,.93));
+  border:1px solid var(--line);border-radius:20px;backdrop-filter:blur(20px);
+  box-shadow:0 18px 60px rgba(0,0,0,.6),inset 0 1px 0 rgba(140,170,255,.14)}
+#hud .hud-inner{display:flex;align-items:center;gap:clamp(12px,2.2vw,26px);
+  padding:13px clamp(14px,2.2vw,24px)}
+/* phase lamp */
+.hud-phase{display:flex;align-items:center;gap:11px;min-width:128px}
+.hud-phase .p-dot{width:10px;height:10px;border-radius:50%;flex:none;
+  background:var(--cyan);color:var(--cyan);box-shadow:0 0 14px currentColor;
+  animation:hudpulse 2.2s ease-in-out infinite}
+#hud.phase-burn .p-dot{background:var(--amber);color:var(--amber)}
+#hud.phase-flip .p-dot{background:var(--violet);color:var(--violet)}
+#hud.phase-orbit .p-dot{background:var(--ok);color:var(--ok)}
+@keyframes hudpulse{0%,100%{transform:scale(1);opacity:.75}50%{transform:scale(1.3);opacity:1}}
+@media (prefers-reduced-motion:reduce){.hud-phase .p-dot{animation:none}}
+.hud-phase small{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.26em;
+  color:var(--faint);text-transform:uppercase}
+.hud-phase .p-txt{font-family:var(--mono);font-size:11px;color:var(--text);letter-spacing:.05em}
+/* trajectory strip: Sol → Tau Ceti */
+.hud-traj{flex:1;min-width:150px}
+.t-lbls{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;
+  letter-spacing:.16em;color:var(--faint);text-transform:uppercase;margin-bottom:7px}
+.t-lbls #hudX{color:var(--cyan);letter-spacing:.04em;text-transform:none}
+.t-track{position:relative;height:14px}
+.t-track::before{content:"";position:absolute;left:0;right:0;top:6px;height:2px;
+  background:rgba(140,170,255,.18);border-radius:2px}
+.t-fill{position:absolute;left:0;top:6px;height:2px;width:0;border-radius:2px;
+  background:linear-gradient(90deg,var(--cyan-deep),var(--cyan));
+  box-shadow:0 0 8px rgba(125,240,255,.5)}
+.t-end{position:absolute;top:3px;width:8px;height:8px;border-radius:50%}
+.t-end.s{left:-2px;background:#ffd27a;box-shadow:0 0 9px rgba(255,210,122,.9)}
+.t-end.e{right:-2px;background:#ffca8a;box-shadow:0 0 9px rgba(255,202,138,.9)}
+.t-ship{position:absolute;top:1px;left:0;width:0;height:0;
+  border-top:6px solid transparent;border-bottom:6px solid transparent;
+  border-left:10px solid var(--cyan);transform:translateX(-4px);
+  filter:drop-shadow(0 0 6px rgba(125,240,255,.95));transition:left .15s linear}
+/* arc dials */
+.hud-dial{display:flex;flex-direction:column;align-items:center;flex:none}
+.hud-dial svg{width:80px;height:48px;overflow:visible}
+.d-bg{fill:none;stroke:rgba(140,170,255,.14);stroke-width:6;stroke-linecap:round}
+.d-fg{fill:none;stroke-width:6;stroke-linecap:round;transition:stroke-dashoffset .18s linear}
+.hud-dial.v .d-fg{stroke:var(--cyan);filter:drop-shadow(0 0 6px rgba(125,240,255,.65))}
+.hud-dial.g .d-fg{stroke:var(--violet);filter:drop-shadow(0 0 6px rgba(155,140,255,.65))}
+.d-txt{fill:var(--text);font-family:var(--mono);font-size:11.5px;text-anchor:middle}
+.d-lbl{font-family:var(--mono);font-size:8.5px;letter-spacing:.24em;color:var(--faint);
+  text-transform:uppercase;margin-top:3px}
+/* twin clocks */
+.hud-clocks{display:flex;flex-direction:column;gap:8px;min-width:198px;flex:none}
+.c-row{display:grid;grid-template-columns:40px 1fr 62px;gap:9px;align-items:center;
+  font-family:var(--mono);font-size:9.5px}
+.c-row>span{color:var(--faint);letter-spacing:.16em;text-transform:uppercase}
+.c-row i{display:block;height:5px;border-radius:3px;background:rgba(140,170,255,.12);overflow:hidden}
+.c-row b{display:block;height:100%;width:0;border-radius:3px;
+  background:linear-gradient(90deg,var(--cyan-deep),var(--cyan));transition:width .15s linear}
+.c-row.amber b{background:linear-gradient(90deg,#c97f2f,var(--amber))}
+.c-row em{font-style:normal;color:var(--cyan);text-align:right;font-size:10.5px;
+  font-variant-numeric:tabular-nums}
+.c-row.amber em{color:var(--amber)}
+/* minimize tab + mini bar */
+#hudMin{position:absolute;top:-13px;right:16px;width:28px;height:26px;border-radius:9px 9px 4px 4px;
+  background:rgba(8,12,26,.95);border:1px solid var(--line);border-bottom-color:transparent;
+  color:var(--dim);font-size:11px;line-height:1}
+#hudMin:hover{color:var(--cyan)}
+.hud-mini{display:none;align-items:center;gap:14px;padding:10px 46px 10px 18px;
+  font-family:var(--mono);font-size:10.5px;color:var(--dim);white-space:nowrap}
+.hud-mini .m-track{flex:1;height:4px;border-radius:2px;background:rgba(140,170,255,.12);overflow:hidden}
+.hud-mini .m-track b{display:block;height:100%;width:0;border-radius:2px;
+  background:linear-gradient(90deg,var(--cyan-deep),var(--cyan))}
+#hud.min .hud-inner{display:none}
+#hud.min .hud-mini{display:flex}
+/* responsive HUD */
+@media(max-width:880px){
+  body{padding-bottom:168px}
+  #hud .hud-inner{flex-wrap:wrap;row-gap:11px;padding:13px 16px}
+  .hud-traj{order:-1;flex-basis:100%;min-width:0}
+  .hud-phase{min-width:0;margin-right:auto}
+  .hud-clocks{min-width:0;flex:1 1 180px}
+}
+@media(max-width:560px){
+  body{padding-bottom:178px}
+  .hud-dial svg{width:66px;height:42px}
+  .d-txt{font-size:10.5px}
+  .hud-clocks{flex:1 1 100%;flex-direction:row;gap:16px;justify-content:space-between}
+  .c-row{display:flex;gap:7px;align-items:baseline}
+  .c-row i{display:none}
+}
+/* ---------- chapter navigator ---------- */
+#chapnav{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+  background:rgba(3,5,12,.72);backdrop-filter:blur(10px)}
+#chapnav[hidden]{display:none}
+.cn-panel{width:min(430px,calc(100% - 28px));max-height:82vh;overflow:auto;padding:20px 18px}
+.cn-panel header{display:flex;justify-content:space-between;align-items:center;
+  font-family:var(--display);font-weight:300;font-size:12px;letter-spacing:.32em;
+  text-transform:uppercase;color:var(--dim);margin-bottom:12px;padding:0 8px}
+.cn-panel a{display:flex;gap:16px;align-items:baseline;padding:13px 12px;border-radius:11px;
+  text-decoration:none;color:var(--text);font-size:15.5px;transition:background .2s}
+.cn-panel a:hover,.cn-panel a:focus-visible{background:rgba(125,240,255,.08)}
+.cn-panel a b{font-family:var(--mono);font-weight:500;font-size:11px;color:var(--cyan);min-width:22px}
+.chapter{scroll-margin-top:16px}
+/* ---------- top controls ---------- */
+#controls{position:fixed;top:16px;right:18px;z-index:41;display:flex;gap:8px}
+.ctl{
+  background:rgba(8,12,26,.72);border:1px solid var(--line);color:var(--dim);
+  border-radius:999px;padding:8px 16px;font-family:var(--mono);font-size:11px;
+  letter-spacing:.08em;backdrop-filter:blur(10px);transition:color .2s,border-color .2s;
+}
+.ctl:hover{color:var(--cyan);border-color:var(--line-strong)}
+@media(max-width:900px){#controls{top:10px;right:10px}}
+@media(max-width:880px){#hero .scroll-cue{bottom:200px}}
+
+/* ---------- layout primitives ---------- */
+.chapter{position:relative;z-index:2;max-width:var(--maxw);margin:0 auto;
+  padding:15vh 24px 12vh}
+.chapter.tight{padding-top:9vh}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.34em;color:var(--cyan);
+  text-transform:uppercase;margin-bottom:18px;display:flex;align-items:center;gap:14px}
+.eyebrow::after{content:"";flex:0 0 56px;height:1px;background:linear-gradient(90deg,var(--cyan),transparent)}
+.eyebrow .ch-tau{color:var(--faint);letter-spacing:.08em;text-transform:none}
+h1,h2{font-family:var(--display);font-weight:300;letter-spacing:.01em;line-height:1.18}
+h1{font-size:clamp(34px,6.4vw,72px)}
+h2{font-size:clamp(26px,4vw,44px);margin-bottom:22px}
+h3{font-family:var(--body);font-weight:600;font-size:18px;letter-spacing:.01em}
+.lede{font-size:clamp(17px,2vw,21px);color:var(--dim);max-width:62ch;margin-top:22px}
+p{max-width:68ch;color:var(--dim)}
+p+p{margin-top:14px}
+p strong,li strong{color:var(--text);font-weight:600}
+.reveal{opacity:0;transform:translateY(28px);transition:opacity .9s cubic-bezier(.2,.6,.2,1),transform .9s cubic-bezier(.2,.6,.2,1)}
+.reveal.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}}
+
+/* ---------- glass panels ---------- */
+.glass{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  backdrop-filter:blur(14px);box-shadow:0 18px 60px rgba(0,0,0,.45)}
+.pad{padding:26px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:34px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:34px}
+@media(max-width:860px){.grid2,.grid3{grid-template-columns:1fr}}
+
+/* ---------- science insight cards ---------- */
+.insight{border-left:2px solid var(--violet);border-radius:0 var(--radius) var(--radius) 0;
+  background:linear-gradient(90deg,rgba(155,140,255,.08),rgba(15,21,40,.5));
+  padding:20px 24px;margin:40px 0 0;max-width:760px}
+.insight .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.3em;color:var(--violet);
+  text-transform:uppercase;display:block;margin-bottom:8px}
+.insight p{font-size:15.5px}
+
+/* ---------- instrument readouts ---------- */
+.readout{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.gauge-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-top:30px}
+.gauge{padding:18px 20px}
+.gauge .g-lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase}
+.gauge .g-val{font-family:var(--mono);font-size:clamp(22px,2.6vw,30px);color:var(--cyan);margin-top:6px;font-variant-numeric:tabular-nums}
+.gauge .g-val.amber{color:var(--amber)} .gauge .g-val.violet{color:var(--violet)}
+.gauge .g-sub{font-size:12.5px;color:var(--faint);margin-top:4px}
+.gauge .bar{height:4px;border-radius:2px;background:rgba(140,170,255,.12);overflow:hidden;margin-top:12px}
+.gauge .bar i{display:block;height:100%;width:0%;border-radius:2px;
+  background:linear-gradient(90deg,var(--cyan-deep),var(--cyan))}
+.gauge .bar.amber i{background:linear-gradient(90deg,#c97f2f,var(--amber))}
+
+/* ---------- sliders ---------- */
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:26px;background:transparent}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;
+  background:linear-gradient(90deg,var(--cyan-deep),var(--violet))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;
+  background:#fff;border:3px solid var(--cyan);margin-top:-8px;box-shadow:0 0 14px rgba(125,240,255,.7);cursor:grab}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--cyan-deep),var(--violet))}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid var(--cyan);cursor:grab}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;gap:10px;border-radius:999px;
+  padding:13px 26px;font-family:var(--mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;
+  background:linear-gradient(180deg,rgba(125,240,255,.16),rgba(43,184,217,.08));
+  border:1px solid rgba(125,240,255,.4);color:var(--cyan);
+  transition:transform .25s cubic-bezier(.2,.6,.2,1),box-shadow .25s,background .25s}
+.btn:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(125,240,255,.18)}
+.btn:active{transform:translateY(0)}
+.btn.ghost{background:transparent;border-color:var(--line);color:var(--dim)}
+.btn.ghost:hover{color:var(--cyan);border-color:var(--line-strong)}
+.btn[disabled]{opacity:.4;pointer-events:none}
+
+/* ---------- hero ---------- */
+#hero{min-height:100svh;display:flex;flex-direction:column;justify-content:center;
+  position:relative;z-index:2;max-width:var(--maxw);margin:0 auto;padding:0 24px}
+#hero .ship-name{font-family:var(--mono);font-size:12px;letter-spacing:.5em;color:var(--amber);
+  text-transform:uppercase;margin-bottom:26px}
+#hero h1 .thin{color:var(--dim)}
+#hero .scroll-cue{position:absolute;bottom:152px;left:24px;font-family:var(--mono);
+  font-size:11px;letter-spacing:.3em;color:var(--faint);text-transform:uppercase;
+  display:flex;align-items:center;gap:12px}
+#hero .scroll-cue::after{content:"";width:1px;height:42px;
+  background:linear-gradient(180deg,var(--cyan),transparent);
+  animation:cue 2.2s ease-in-out infinite}
+@keyframes cue{0%,100%{transform:scaleY(.4);opacity:.4}50%{transform:scaleY(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){#hero .scroll-cue::after{animation:none}}
+.mission-strip{display:flex;gap:34px;flex-wrap:wrap;margin-top:46px;font-family:var(--mono);font-size:12.5px}
+.mission-strip div b{display:block;color:var(--cyan);font-size:18px;font-weight:500;margin-bottom:2px}
+.mission-strip div span{color:var(--faint);letter-spacing:.1em;text-transform:uppercase;font-size:10.5px}
+
+/* ---------- chapter 1: earth ---------- */
+.earth-wrap{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:30px;align-items:center;margin-top:36px}
+@media(max-width:860px){.earth-wrap{grid-template-columns:1fr}}
+#earth-stage{position:relative;aspect-ratio:1/1;max-width:520px;margin:0 auto;width:100%}
+#earth{width:100%;height:100%;display:block;border-radius:50%;cursor:grab;touch-action:none}
+#earth.dragging{cursor:grabbing}
+.fact-dot{position:absolute;width:14px;height:14px;border-radius:50%;border:none;
+  background:var(--cyan);box-shadow:0 0 0 4px rgba(125,240,255,.18),0 0 16px rgba(125,240,255,.8);
+  transition:transform .2s}
+.fact-dot:hover,.fact-dot:focus-visible{transform:scale(1.5)}
+.fact-tip{position:absolute;z-index:5;width:230px;padding:13px 15px;font-size:13.5px;line-height:1.5;
+  color:var(--text);background:rgba(10,15,32,.94);border:1px solid var(--line-strong);
+  border-radius:12px;pointer-events:none;opacity:0;transform:translateY(8px);
+  transition:opacity .25s,transform .25s}
+.fact-tip.show{opacity:1;transform:none}
+.earth-ctl{display:flex;gap:8px;justify-content:center;margin-top:14px}
+
+/* ---------- chapter 2: thrust ---------- */
+#thrust-stage{position:relative;height:240px;border-radius:var(--radius);overflow:hidden;
+  border:1px solid var(--line);margin-top:30px;background:radial-gradient(80% 120% at 70% 50%,#0a1226,#04060e)}
+#thrust-canvas{position:absolute;inset:0;width:100%;height:100%}
+
+/* ---------- chapter 3: relativity lab ---------- */
+.lab{margin-top:34px}
+.lab .slider-row{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.lab .slider-row .readout{font-size:clamp(20px,3vw,28px);color:var(--cyan);min-width:150px}
+.formula{font-family:var(--mono);font-size:clamp(16px,2.4vw,22px);color:var(--text);
+  background:rgba(155,140,255,.07);border:1px solid rgba(155,140,255,.25);
+  border-radius:14px;padding:18px 24px;display:inline-flex;align-items:center;gap:6px;margin-top:10px}
+.formula .frac{display:inline-flex;flex-direction:column;align-items:center;line-height:1.15;vertical-align:middle}
+.formula .frac .den{border-top:1.5px solid var(--violet);padding:2px 8px 0}
+.formula .frac .num{padding:0 8px}
+.formula .sqrt{display:inline-flex;align-items:stretch}
+.formula .sqrt .sign{font-size:1.25em;line-height:1;transform:translateY(1px)}
+.formula .sqrt .body{border-top:1.5px solid var(--violet);padding:1px 6px 0 4px}
+.formula sup{font-size:.62em}
+.formula .v-violet{color:var(--violet)} .formula .v-cyan{color:var(--cyan)}
+.demo-pair{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:24px}
+@media(max-width:860px){.demo-pair{grid-template-columns:1fr}}
+.clock-face{width:110px;height:110px;border-radius:50%;border:1.5px solid var(--line-strong);
+  position:relative;margin:14px auto 6px;background:radial-gradient(circle at 35% 30%,rgba(125,240,255,.08),transparent 60%)}
+.clock-face .hand{position:absolute;left:50%;bottom:50%;width:2px;height:42px;border-radius:2px;
+  background:var(--cyan);transform-origin:bottom center;box-shadow:0 0 10px rgba(125,240,255,.6)}
+.clock-face .pin{position:absolute;left:50%;top:50%;width:7px;height:7px;border-radius:50%;
+  background:#fff;transform:translate(-50%,-50%)}
+.clock-lbl{text-align:center;font-family:var(--mono);font-size:11px;letter-spacing:.2em;
+  color:var(--faint);text-transform:uppercase}
+.clock-val{text-align:center;font-family:var(--mono);font-size:14px;color:var(--cyan);margin-top:4px}
+.contract-stage{padding:24px 20px 18px}
+.contract-track{height:62px;display:flex;align-items:center;margin-top:14px}
+.ship-silhouette{height:34px;border-radius:18px 8px 8px 18px;width:78%;
+  background:linear-gradient(90deg,rgba(125,240,255,.4),rgba(125,240,255,.12));
+  border:1px solid rgba(125,240,255,.5);position:relative;
+  transition:width .15s linear;margin:0 auto}
+.ship-silhouette::after{content:"";position:absolute;right:-14px;top:50%;transform:translateY(-50%);
+  width:12px;height:10px;background:var(--amber);border-radius:50%;filter:blur(4px);opacity:.9}
+#aberration{width:100%;height:230px;border-radius:14px;display:block;border:1px solid var(--line)}
+
+/* ---------- chapter 4: comms ---------- */
+#comm-stage{position:relative;height:170px;margin-top:26px;border-radius:var(--radius);
+  border:1px solid var(--line);overflow:hidden;
+  background:linear-gradient(90deg,#0a1226 0%,#04060e 50%,#120d22 100%)}
+#comm-canvas{position:absolute;inset:0;width:100%;height:100%}
+.comm-ui{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:20px}
+.comm-readout{font-family:var(--mono);font-size:14px;color:var(--dim)}
+.comm-readout b{color:var(--amber);font-weight:500;font-size:20px;display:block;font-variant-numeric:tabular-nums}
+
+/* ---------- chapter 5: medium ---------- */
+#medium-stage{position:relative;height:280px;border-radius:var(--radius);overflow:hidden;
+  border:1px solid var(--line);margin-top:30px;background:#04060e}
+#medium-canvas{position:absolute;inset:0;width:100%;height:100%}
+.medium-hud{position:absolute;left:16px;bottom:14px;font-family:var(--mono);font-size:11px;
+  color:var(--dim);background:rgba(8,12,26,.7);border:1px solid var(--line);
+  border-radius:10px;padding:8px 12px;backdrop-filter:blur(8px)}
+.medium-hud b{color:var(--danger);font-weight:500}
+
+/* ---------- chapter 6: cutaway ---------- */
+.cutaway-wrap{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,.75fr);gap:24px;margin-top:30px;align-items:start}
+@media(max-width:920px){.cutaway-wrap{grid-template-columns:1fr}}
+#cutaway{width:100%;height:auto;display:block}
+#cutaway .part{cursor:pointer;transition:filter .25s, opacity .25s}
+#cutaway .part:hover,#cutaway .part:focus-visible,#cutaway .part.active{filter:drop-shadow(0 0 10px rgba(125,240,255,.8))}
+#cutaway .part.active .fill{fill:rgba(125,240,255,.30)}
+#part-card{position:sticky;top:80px;min-height:230px}
+#part-card .pc-eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.28em;color:var(--amber);text-transform:uppercase}
+#part-card h3{font-family:var(--display);font-weight:400;font-size:19px;margin:8px 0 12px}
+#part-card p{font-size:14.5px}
+#part-card .pc-stat{font-family:var(--mono);font-size:12px;color:var(--cyan);margin-top:14px;
+  border-top:1px dashed var(--line);padding-top:12px}
+
+/* ---------- chapter 7: hibernation ---------- */
+.pod-wrap{display:grid;grid-template-columns:300px 1fr;gap:30px;align-items:center;margin-top:30px}
+@media(max-width:860px){.pod-wrap{grid-template-columns:1fr;justify-items:center}}
+#pod{width:260px;height:340px;display:block;margin:0 auto}
+.sci-vs{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:30px}
+@media(max-width:860px){.sci-vs{grid-template-columns:1fr}}
+.sci-vs .col{padding:22px}
+.sci-vs .col .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.26em;text-transform:uppercase;display:block;margin-bottom:12px}
+.sci-vs .col.established{border-top:2px solid var(--ok)} .sci-vs .col.established .tag{color:var(--ok)}
+.sci-vs .col.speculative{border-top:2px solid var(--amber)} .sci-vs .col.speculative .tag{color:var(--amber)}
+.sci-vs ul{list-style:none}
+.sci-vs li{font-size:14.5px;color:var(--dim);padding:7px 0 7px 18px;position:relative}
+.sci-vs li::before{content:"";position:absolute;left:0;top:15px;width:7px;height:1.5px;background:currentColor;opacity:.5}
+
+/* ---------- chapter 8: starmap ---------- */
+#map-stage{position:relative;height:430px;border-radius:var(--radius);overflow:hidden;
+  border:1px solid var(--line);margin-top:30px;background:#03050c}
+#map-canvas{position:absolute;inset:0;width:100%;height:100%;cursor:grab;touch-action:none}
+#map-canvas.dragging{cursor:grabbing}
+.map-ctl{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:6px}
+.map-hint{position:absolute;left:14px;bottom:12px;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.14em;color:var(--faint);background:rgba(8,12,26,.7);
+  border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+
+/* ---------- chapter 9: arrival ---------- */
+#arrival-stage{position:relative;height:340px;border-radius:var(--radius);overflow:hidden;
+  border:1px solid var(--line);margin-top:30px;background:#03050c}
+#arrival-canvas{position:absolute;inset:0;width:100%;height:100%}
+.summary{margin-top:36px}
+.summary table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13.5px}
+.summary td{padding:13px 6px;border-bottom:1px dashed var(--line);color:var(--dim)}
+.summary td:last-child{text-align:right;color:var(--cyan);font-variant-numeric:tabular-nums}
+
+/* ---------- footer ---------- */
+footer{position:relative;z-index:2;max-width:var(--maxw);margin:0 auto;
+  padding:60px 24px 110px;display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap}
+footer .note{font-size:13px;color:var(--faint);max-width:54ch}
+footer .credit{font-family:var(--display);font-weight:300;font-size:12px;
+  letter-spacing:.34em;color:var(--faint);text-transform:uppercase;text-align:right}
+footer .credit b{color:var(--dim);font-weight:400}
+
+/* paused state */
+body.paused #stars{opacity:.85}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>
+</head>
+<body>
+<canvas id="stars" aria-hidden="true"></canvas>
+<div id="vignette" aria-hidden="true"></div>
+
+<!-- top controls -->
+<div id="controls">
+  <button class="ctl" id="chaptersBtn" aria-haspopup="dialog">☰ chapters</button>
+  <button class="ctl" id="pauseBtn" aria-pressed="false">⏸ pause motion</button>
+  <button class="ctl" id="restartBtn">↺ restart journey</button>
+</div>
+
+<!-- persistent mission HUD dock: scroll position = mission progress -->
+<aside id="hud" aria-label="Live mission instruments">
+  <button id="hudMin" aria-label="Minimize mission HUD" aria-expanded="true">▾</button>
+  <div class="hud-inner">
+    <div class="hud-phase">
+      <span class="p-dot" aria-hidden="true"></span>
+      <div><small>phase</small><span class="p-txt" id="hudPhase">pre-launch</span></div>
+    </div>
+    <div class="hud-traj" aria-label="Trajectory progress, Sol to Tau Ceti">
+      <div class="t-lbls"><span>Sol</span><span id="hudX">0.00 / 11.9 ly</span><span>Tau Ceti</span></div>
+      <div class="t-track">
+        <i class="t-fill" id="hudBar"></i>
+        <b class="t-ship" id="hudShipMark" aria-hidden="true"></b>
+        <span class="t-end s" aria-hidden="true"></span><span class="t-end e" aria-hidden="true"></span>
+      </div>
+    </div>
+    <div class="hud-dial v" aria-label="Velocity gauge">
+      <svg viewBox="0 0 80 50" aria-hidden="true">
+        <path class="d-bg" d="M10,44 A30,30 0 0 1 70,44" pathLength="100"/>
+        <path class="d-fg" id="hudVArc" d="M10,44 A30,30 0 0 1 70,44" pathLength="100"
+              stroke-dasharray="100" stroke-dashoffset="100"/>
+        <text class="d-txt" x="40" y="41" id="hudV">0.0000 c</text>
+      </svg>
+      <span class="d-lbl">velocity</span>
+    </div>
+    <div class="hud-dial g" aria-label="Lorentz factor gauge">
+      <svg viewBox="0 0 80 50" aria-hidden="true">
+        <path class="d-bg" d="M10,44 A30,30 0 0 1 70,44" pathLength="100"/>
+        <path class="d-fg" id="hudGArc" d="M10,44 A30,30 0 0 1 70,44" pathLength="100"
+              stroke-dasharray="100" stroke-dashoffset="100"/>
+        <text class="d-txt" x="40" y="41" id="hudG">γ 1.00</text>
+      </svg>
+      <span class="d-lbl">gamma</span>
+    </div>
+    <div class="hud-clocks" aria-label="Ship time versus Earth time">
+      <div class="c-row"><span>ship</span><i><b id="hudTauBar"></b></i><em id="hudTau">0.00 yr</em></div>
+      <div class="c-row amber"><span>earth</span><i><b id="hudTBar"></b></i><em id="hudT">0.00 yr</em></div>
+    </div>
+  </div>
+  <div class="hud-mini">
+    <i class="m-track"><b id="miniBar"></b></i>
+    <span id="miniTxt">0.000 c · γ 1.00 · 0.0 ly</span>
+  </div>
+</aside>
+
+<!-- chapter navigator overlay -->
+<nav id="chapnav" hidden aria-label="Chapter navigation">
+  <div class="cn-panel glass">
+    <header>Chapters <button class="ctl" id="cnClose" aria-label="Close chapter list">✕</button></header>
+    <a href="#hero"><b>00</b>Two Clocks — mission brief</a>
+    <a href="#ch1"><b>01</b>Departure</a>
+    <a href="#ch2"><b>02</b>Building velocity</a>
+    <a href="#ch3"><b>03</b>Relativistic effects</a>
+    <a href="#ch4"><b>04</b>Calling home</a>
+    <a href="#ch5"><b>05</b>The cosmic environment</a>
+    <a href="#ch6"><b>06</b>Ship systems</a>
+    <a href="#ch7"><b>07</b>Hibernation</a>
+    <a href="#ch8"><b>08</b>Navigation</a>
+    <a href="#ch9"><b>09</b>Arrival</a>
+  </div>
+</nav>
+
+<!-- ======================== HERO ======================== -->
+<header id="hero">
+  <p class="ship-name reveal">Two Clocks · ISV Crossing · Sol → Tau Ceti</p>
+  <h1 class="reveal">Eleven point nine light-years.<br><span class="thin">One spacecraft. Two clocks.</span></h1>
+  <p class="lede reveal">A relativistic voyage inspired by <em>Project Hail Mary</em> — accelerate at 1.5 g for two years of ship time, coast through the strange physics of near-light speed, and arrive having aged less than four years while Earth ages thirteen. Scroll to fly the mission. The instruments on the right are live.</p>
+  <div class="mission-strip reveal">
+    <div><b>11.9 ly</b><span>distance</span></div>
+    <div><b>1.5 g</b><span>constant thrust</span></div>
+    <div><b>0.995 c</b><span>peak velocity</span></div>
+    <div><b>γ ≈ 10.2</b><span>peak time dilation</span></div>
+  </div>
+  <div class="scroll-cue">scroll to begin burn</div>
+</header>
+
+<!-- ======================== 1 · LAUNCH ======================== -->
+<section class="chapter" id="ch1">
+  <p class="eyebrow reveal">Chapter 01 <span class="ch-tau">· τ = 0</span></p>
+  <h2 class="reveal">Departure</h2>
+  <p class="reveal">The mission objective is simple to state and absurd to attempt: deliver a science payload to <strong>Tau Ceti</strong>, a sun-like star 11.9 light-years away, within a human lifetime. Chemical rockets would need over 100,000 years. The Crossing's spin-drive holds a steady <strong>1.5 g</strong> instead — and lets Einstein do the rest.</p>
+  <div class="earth-wrap">
+    <div class="glass pad reveal" id="earth-panel">
+      <div id="earth-stage">
+        <canvas id="earth" aria-label="Interactive Earth. Drag to rotate."></canvas>
+        <button class="fact-dot" data-tip="Low orbit is only ~400 km up — but the hard part of spaceflight isn't altitude, it's the ~7.8 km/s of sideways speed." style="left:18%;top:30%" aria-label="Fact: orbital speed"></button>
+        <button class="fact-dot" data-tip="From here, the entire 11.9 ly journey is invisible: Tau Ceti is a faint naked-eye star in the constellation Cetus." style="left:72%;top:22%" aria-label="Fact: Tau Ceti location"></button>
+        <button class="fact-dot" data-tip="Escaping Earth costs ~11.2 km/s. Reaching 0.995 c needs ~26,000× more speed — and millions of times more energy per kilogram." style="left:62%;top:74%" aria-label="Fact: escape velocity vs relativistic speed"></button>
+        <div class="fact-tip" id="factTip" role="status"></div>
+      </div>
+      <div class="earth-ctl">
+        <button class="btn ghost" id="zoomOut" aria-label="Zoom out">−</button>
+        <button class="btn ghost" id="zoomIn" aria-label="Zoom in">+</button>
+        <span style="align-self:center;font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.12em">drag to rotate · dots are facts</span>
+      </div>
+    </div>
+    <div class="reveal">
+      <h3>Mission objectives</h3>
+      <p style="margin-top:10px;font-size:15.5px">① Reach Tau Ceti in under 4 years of crew time. ② Survive the interstellar medium at relativistic speed. ③ Decelerate — arriving at 0.995 c is not arriving, it's a very expensive flash. ④ Keep three humans alive, mostly asleep, the whole way.</p>
+      <p style="font-size:15.5px">As you scroll, Earth's gravity well falls away behind you. Watch the HUD: every value it shows is computed from the actual relativistic rocket equations, not animation curves.</p>
+    </div>
+  </div>
+  <div class="insight reveal"><span class="tag">Science insight</span>
+    <p><strong>A light-year is a distance, not a time</strong> — about 9.46 trillion km, the distance light covers in one year. Saying Tau Ceti is "11.9 light-years away" means even a radio message takes 11.9 years to get there, one way, no exceptions.</p>
+  </div>
+</section>
+
+<!-- ======================== 2 · VELOCITY ======================== -->
+<section class="chapter" id="ch2">
+  <p class="eyebrow reveal">Chapter 02 <span class="ch-tau">· the long burn</span></p>
+  <h2 class="reveal">Building velocity</h2>
+  <p class="reveal">There is no air in space, so there is also no drag. By <strong>inertia</strong>, a coasting ship keeps its speed forever for free — which is exactly why the Crossing never stops thrusting: every additional second of burn is speed it gets to keep. A constant 1.5 g also doubles as artificial gravity, with "down" pointing toward the engines.</p>
+  <div id="thrust-stage" class="reveal" aria-label="Animated spacecraft under thrust"><canvas id="thrust-canvas"></canvas></div>
+  <div class="gauge-grid reveal" id="burnGauges">
+    <div class="glass gauge"><span class="g-lbl">Velocity</span><div class="g-val" id="bgV">0.0000 c</div><div class="g-sub" id="bgVkm">0 km/s</div><div class="bar"><i id="bgVbar"></i></div></div>
+    <div class="glass gauge"><span class="g-lbl">Distance travelled</span><div class="g-val" id="bgX">0.000 ly</div><div class="g-sub">of 11.9 ly</div><div class="bar"><i id="bgXbar"></i></div></div>
+    <div class="glass gauge"><span class="g-lbl">Time elapsed</span><div class="g-val amber" id="bgT">0.00 yr</div><div class="g-sub" id="bgTau">ship: 0.00 yr</div></div>
+    <div class="glass gauge"><span class="g-lbl">Propellant</span><div class="g-val amber" id="bgF">100%</div><div class="g-sub">spin-drive reserve</div><div class="bar amber"><i id="bgFbar"></i></div></div>
+  </div>
+  <p class="reveal" style="margin-top:26px;font-size:15.5px">Notice the velocity gauge slowing down even though thrust never changes. At everyday speeds, 1.5 g adds about 14.7 m/s every second, like clockwork. Near light speed the same push buys less and less <em>velocity</em> — but keeps buying momentum and energy without limit. The speed of light isn't a wall you hit; it's an asymptote you chase.</p>
+  <div class="insight reveal"><span class="tag">Science insight</span>
+    <p><strong>Why nothing with mass reaches c:</strong> kinetic energy grows as (γ−1)mc², and γ blows up toward infinity as v → c. Each extra 0.001 c costs more than the last; the final step would cost infinite energy. Light manages it only because photons have no rest mass.</p>
+  </div>
+</section>
+
+<!-- ======================== 3 · RELATIVITY LAB ======================== -->
+<section class="chapter" id="ch3">
+  <p class="eyebrow reveal">Chapter 03 <span class="ch-tau">· the lab</span></p>
+  <h2 class="reveal">Relativistic effects</h2>
+  <p class="reveal">Everything strange about this voyage flows from one number: the <strong>Lorentz factor γ</strong>. Drag the throttle and watch the universe respond. Every readout below uses the exact formulas — no theatrical exaggeration needed.</p>
+
+  <div class="glass pad lab reveal">
+    <div class="slider-row">
+      <label for="vSlider" style="font-family:var(--mono);font-size:11px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase">Velocity</label>
+      <input type="range" id="vSlider" min="0" max="9999" value="2000" step="1" aria-label="Velocity as fraction of light speed">
+      <span class="readout" id="labV">20.00% c</span>
+      <span class="readout" id="labG" style="color:var(--violet)">γ = 1.021</span>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px">
+      <div class="formula" aria-label="Lorentz factor formula">
+        <span class="v-violet">γ</span>&nbsp;=&nbsp;
+        <span class="frac"><span class="num">1</span><span class="den"><span class="sqrt"><span class="sign">√</span><span class="body">1 − <span class="v-cyan">v</span><sup>2</sup>/c<sup>2</sup></span></span></span></span>
+      </div>
+      <div class="formula" aria-label="Time dilation formula">Δt&nbsp;=&nbsp;<span class="v-violet">γ</span>·Δτ</div>
+      <div class="formula" aria-label="Length contraction formula">L&nbsp;=&nbsp;L₀&thinsp;/&thinsp;<span class="v-violet">γ</span></div>
+    </div>
+  </div>
+
+  <div class="demo-pair reveal">
+    <div class="glass pad">
+      <h3>Time dilation</h3>
+      <p style="font-size:14px;margin-top:6px">Two identical clocks. The ship's runs slower <em>as measured from Earth</em> — by exactly γ.</p>
+      <div style="display:flex;gap:24px;justify-content:center">
+        <div><div class="clock-face"><div class="hand" id="earthHand"></div><div class="pin"></div></div><div class="clock-lbl">Earth</div><div class="clock-val" id="earthClockVal">1.000×</div></div>
+        <div><div class="clock-face"><div class="hand" id="shipHand"></div><div class="pin"></div></div><div class="clock-lbl">Ship</div><div class="clock-val" id="shipClockVal">0.980×</div></div>
+      </div>
+    </div>
+    <div class="glass contract-stage">
+      <h3>Length contraction</h3>
+      <p style="font-size:14px;margin-top:6px">The same ship seen from Earth, compressed along its direction of motion by 1/γ. The crew notices nothing — to them, it's the galaxy that contracts.</p>
+      <div class="contract-track"><div class="ship-silhouette" id="contractShip"></div></div>
+      <div class="clock-val" id="contractVal" style="text-align:center">L = 100.0% of rest length</div>
+    </div>
+  </div>
+
+  <div class="glass pad reveal" style="margin-top:18px">
+    <h3>The view ahead — relativistic aberration &amp; Doppler shift</h3>
+    <p style="font-size:14px;margin:6px 0 14px">At high γ, starlight crowds toward your direction of travel and blueshifts — the sky bunches into a bright tunnel ahead and dims behind. This is the same slider, rendered honestly.</p>
+    <canvas id="aberration" aria-label="Star aberration visualization controlled by the velocity slider"></canvas>
+  </div>
+
+  <div class="insight reveal"><span class="tag">Science insight</span>
+    <p><strong>Proper time (τ)</strong> is the time measured by a clock that travels with you — heartbeats, wristwatches, cell division. Earth time and ship time disagree, yet neither is "wrong": each clock is correct in its own frame. The traveler genuinely ages 3.9 years on a trip Earth measures at 13.1.</p>
+  </div>
+</section>
+
+<!-- ======================== 4 · COMMS ======================== -->
+<section class="chapter" id="ch4">
+  <p class="eyebrow reveal">Chapter 04 <span class="ch-tau">· the silence</span></p>
+  <h2 class="reveal">Calling home</h2>
+  <p class="reveal">Radio is light. Nothing — including mission control's reply — can outrun it. Choose how far out the ship is, transmit, and watch the round trip. The animation is sped up roughly two billion times; the counted delay is real.</p>
+  <div id="comm-stage" class="reveal"><canvas id="comm-canvas" aria-label="Light signal traveling between ship and Earth"></canvas></div>
+  <div class="comm-ui reveal">
+    <div style="flex:1;min-width:240px">
+      <label for="distSlider" style="font-family:var(--mono);font-size:11px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase">Ship distance: <span id="distVal" style="color:var(--cyan)">2.0 light-years</span></label>
+      <input type="range" id="distSlider" min="0.05" max="11.9" value="2" step="0.05">
+    </div>
+    <button class="btn" id="sendBtn">Send message</button>
+    <div class="comm-readout">one-way delay<b id="owDelay">2.00 yr</b></div>
+    <div class="comm-readout">round trip<b id="rtDelay">4.00 yr</b></div>
+  </div>
+  <p class="reveal" style="margin-top:24px;font-size:15.5px">A few months out, conversation is already impossible — by mid-voyage, a single question and answer spans a decade of Earth time. Crews of interstellar ships aren't remote workers; they are, functionally, <strong>alone</strong>. Mission planning must assume zero real-time help: every failure mode solved in advance or solved on board.</p>
+  <div class="insight reveal"><span class="tag">Science insight</span>
+    <p><strong>Relativistic Doppler makes it worse:</strong> at 0.995 c receding, every transmission from Earth arrives stretched ~20× in frequency and duration — a one-minute voice message smeared across twenty minutes, redshifted deep out of band. Antenna pointing at interstellar range is its own nightmare.</p>
+  </div>
+</section>
+
+<!-- ======================== 5 · MEDIUM ======================== -->
+<section class="chapter" id="ch5">
+  <p class="eyebrow reveal">Chapter 05 <span class="ch-tau">· the not-quite-vacuum</span></p>
+  <h2 class="reveal">The cosmic environment</h2>
+  <p class="reveal">Interstellar space holds roughly one hydrogen atom per cubic centimetre, plus sparse dust grains, galactic cosmic rays, and the occasional micrometeoroid. Harmless — until you hit it at 0.995 c. At that speed the medium stops being emptiness and becomes <strong>weather</strong>.</p>
+  <div id="medium-stage" class="reveal">
+    <canvas id="medium-canvas" aria-label="Animated dust impacts on the ship's shield"></canvas>
+    <div class="medium-hud">impact energy, 1 mg grain @ 0.995 c ≈ <b>0.83 GJ</b> — about 200 kg of TNT</div>
+  </div>
+  <div class="grid3 reveal">
+    <div class="glass pad"><h3>Dust &amp; micrometeoroids</h3><p style="font-size:14px;margin-top:8px">Kinetic energy is (γ−1)mc². At γ ≈ 10, each milligram carries the punch of a small bomb. The fix is geometry: a thick ablative <strong>Whipple shield</strong> flown ahead of the ship, plus a slender profile that minimises frontal area.</p></div>
+    <div class="glass pad"><h3>Hydrogen becomes radiation</h3><p style="font-size:14px;margin-top:8px">At relativistic speed, the thin hydrogen gas itself arrives as a beam of ~GeV protons — the ship is effectively flying into its own particle accelerator. Forward shielding mass and standoff distance are non-negotiable.</p></div>
+    <div class="glass pad"><h3>Cosmic rays</h3><p style="font-size:14px;margin-top:8px">Galactic cosmic rays strike from all directions and shower through hulls. Best current answers: metres of water, propellant, or polyethylene around crew spaces — and keeping mission time short. Time dilation, for once, helps the crew here.</p></div>
+  </div>
+  <div class="insight reveal"><span class="tag">Science insight</span>
+    <p><strong>Why braking matters as much as burning:</strong> all that lethal kinetic energy is <em>yours too</em>. A flyby at 0.995 c crosses the entire Tau Ceti system in hours. The Crossing spends fully half its mission — and half its propellant — flipped around, killing the speed it spent two years building.</p>
+  </div>
+</section>
+
+<!-- ======================== 6 · SHIP ======================== -->
+<section class="chapter" id="ch6">
+  <p class="eyebrow reveal">Chapter 06 <span class="ch-tau">· the machine</span></p>
+  <h2 class="reveal">Ship systems</h2>
+  <p class="reveal">Click or tab through the cutaway. The architecture is dictated by physics: shield forward, crew in the middle, engines aft, and almost everything else is fuel.</p>
+  <div class="cutaway-wrap">
+    <div class="glass pad reveal">
+      <svg id="cutaway" viewBox="0 0 760 300" role="group" aria-label="Interactive spacecraft cutaway diagram"></svg>
+      <p style="font-size:12px;font-family:var(--mono);color:var(--faint);letter-spacing:.1em;margin-top:10px">ISV CROSSING · LONGITUDINAL SECTION · BOW LEFT</p>
+    </div>
+    <div class="glass pad reveal" id="part-card">
+      <span class="pc-eyebrow" id="pcEyebrow">Select a system</span>
+      <h3 id="pcTitle">Cutaway</h3>
+      <p id="pcBody">Every component aboard an interstellar ship fights for the same two budgets: mass and power. Tap any highlighted section of the hull to see what it does and what it costs.</p>
+      <div class="pc-stat" id="pcStat">8 systems · 0 selected</div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== 7 · HIBERNATION ======================== -->
+<section class="chapter" id="ch7">
+  <p class="eyebrow reveal">Chapter 07 <span class="ch-tau">· the long sleep</span></p>
+  <h2 class="reveal">Hibernation</h2>
+  <p class="reveal">In <em>Project Hail Mary</em>, the crew crosses in medically induced comas, tended by automated systems. The appeal is real engineering, not just drama: a sleeping crew consumes a fraction of the food, water, oxygen — and sanity — of a waking one, and dramatically shrinks the life-support mass the engines must push.</p>
+  <div class="pod-wrap">
+    <svg id="pod" class="reveal" viewBox="0 0 260 340" aria-label="Animated hibernation pod with slowed vital signs"></svg>
+    <div class="reveal">
+      <p style="font-size:15.5px">During suspension the simulation slows everything biological: a resting heart rate of ~60 bpm drops toward a torpor-like handful of beats per minute, core temperature falls, and metabolic demand collapses. Automated systems handle nutrient lines, muscle stimulation, and the thousand tiny corrections a body in stasis needs.</p>
+      <p style="font-size:15.5px">Watch the pod's vitals trace — it's running at the slowed rate, paced to the mission's gamma for a little poetic license.</p>
+    </div>
+  </div>
+  <div class="sci-vs reveal">
+    <div class="glass col established"><span class="tag">Established science</span><ul>
+      <li><strong>Therapeutic hypothermia</strong> is routine medicine: cooling patients a few degrees for hours-to-days reduces metabolic demand and protects the brain after cardiac arrest.</li>
+      <li><strong>Animal torpor is real and inducible.</strong> Ground squirrels drop to near-freezing body temperatures for months; researchers have triggered torpor-like states in mice by stimulating specific neurons.</li>
+      <li><strong>Short-term human stasis research exists</strong>, including trials of emergency preservation (rapid cooling) for trauma surgery measured in tens of minutes.</li>
+    </ul></div>
+    <div class="glass col speculative"><span class="tag">Speculative / fictional</span><ul>
+      <li><strong>Months-to-years human hibernation</strong> has never been done; bone loss, muscle wasting, immune suppression and bedsores are unsolved at that scale.</li>
+      <li><strong>Cryonic freezing and revival</strong> remains fiction — ice crystals destroy cells, and no frozen mammal has ever been revived.</li>
+      <li><strong>Fully autonomous medical care</strong> of an unconscious crew for years, with no ground support, is far beyond current systems.</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- ======================== 8 · NAVIGATION ======================== -->
+<section class="chapter" id="ch8">
+  <p class="eyebrow reveal">Chapter 08 <span class="ch-tau">· finding the way</span></p>
+  <h2 class="reveal">Navigation</h2>
+  <p class="reveal">There is no GPS between stars, but there is something better: the stars themselves. The ship fixes its position by triangulating against <strong>pulsars</strong> — neutron stars whose radio ticks are as regular as atomic clocks — and checks its course by the slowly shifting parallax of nearby stars against the frozen background of distant ones. Drag the map; scroll or pinch to zoom.</p>
+  <div id="map-stage" class="reveal">
+    <canvas id="map-canvas" aria-label="Interactive star map showing Sun, Tau Ceti and the ship's trajectory. Drag to pan, scroll to zoom."></canvas>
+    <div class="map-ctl">
+      <button class="ctl" id="mapZoomIn" aria-label="Zoom map in">+</button>
+      <button class="ctl" id="mapZoomOut" aria-label="Zoom map out">−</button>
+      <button class="ctl" id="mapReset" aria-label="Reset map view">⌖</button>
+    </div>
+    <div class="map-hint">drag · pinch / scroll to zoom · ship position follows your progress</div>
+  </div>
+  <div class="insight reveal"><span class="tag">Science insight</span>
+    <p><strong>Aiming at where the star will be:</strong> Tau Ceti moves through the galaxy at tens of km/s relative to the Sun. Over a 13-year crossing it drifts billions of kilometres, so the trajectory targets its <em>future</em> position — navigation between stars is a permanent exercise in leading the target.</p>
+  </div>
+</section>
+
+<!-- ======================== 9 · ARRIVAL ======================== -->
+<section class="chapter" id="ch9">
+  <p class="eyebrow reveal">Chapter 09 <span class="ch-tau">· τ = 3.89 yr</span></p>
+  <h2 class="reveal">Arrival</h2>
+  <p class="reveal">The flip happened at the midpoint, years ago. Now the burn that built all that speed has spent itself taking it away. Gamma slides back toward 1, the tunnel of aberrated starlight relaxes into an ordinary sky, and one star ahead refuses to fade like the others. Tau Ceti, growing.</p>
+  <div id="arrival-stage" class="reveal"><canvas id="arrival-canvas" aria-label="Cinematic deceleration and orbital insertion around Tau Ceti"></canvas></div>
+  <div class="glass pad summary reveal">
+    <h3>Mission summary · ISV Crossing</h3>
+    <table aria-label="Final mission statistics">
+      <tr><td>Distance crossed</td><td>11.9 light-years</td></tr>
+      <tr><td>Crew (proper) time elapsed</td><td>3.89 years</td></tr>
+      <tr><td>Earth time elapsed</td><td>13.13 years</td></tr>
+      <tr><td>Time "gained" by the crew</td><td>9.24 years</td></tr>
+      <tr><td>Peak velocity</td><td>0.99519 c</td></tr>
+      <tr><td>Peak Lorentz factor</td><td>γ = 10.21</td></tr>
+      <tr><td>Thrust profile</td><td>1.5 g accelerate · flip · 1.5 g decelerate</td></tr>
+      <tr><td>Messages home that fit in one conversation</td><td>0</td></tr>
+    </table>
+  </div>
+  <p class="reveal" style="margin-top:26px;font-size:15.5px">The crew steps out of suspension into orbit around a star no human eye has seen up close, younger than everyone they left behind. That asymmetry isn't a paradox or a trick of perception — it is what spacetime <em>is</em>, measured honestly by two good clocks that took different paths through it.</p>
+  <div style="margin-top:34px" class="reveal"><button class="btn" id="restartBtn2">↺ Fly it again</button></div>
+</section>
+
+<footer>
+  <p class="note">An educational simulation. All relativistic quantities are computed from special relativity (constant proper acceleration, c = 299,792,458 m/s). Hibernation, spin-drive propulsion and crewed interstellar flight remain — for now — beautifully unfinished business.</p>
+  <p class="credit">Designed by <b>MSC</b></p>
+</footer>
+<script>
+"use strict";
+/* ============================================================
+   CROSSING — application script
+   Modules: physics core · global animation loop · starfield ·
+   scroll HUD · reveals · per-chapter interactives
+   ============================================================ */
+
+/* ---------- 0. shared state & helpers ---------- */
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const App = { paused:false, time:0 };           // global motion state
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const $=s=>document.querySelector(s);
+
+function sizeCanvas(cv){                         // crisp canvases on any DPR
+  const dpr=Math.min(devicePixelRatio||1,2);
+  const r=cv.getBoundingClientRect();
+  if(!r.width||!r.height) return null;
+  cv.width=Math.round(r.width*dpr); cv.height=Math.round(r.height*dpr);
+  const ctx=cv.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx,w:r.width,h:r.height};
+}
+
+/* ---------- 1. physics core: relativistic rocket, c = 1 ----------
+   Units: distance ly, time yr, acceleration ly/yr². 1 g = 1.0323 ly/yr².
+   Brachistochrone: accelerate to midpoint, flip, decelerate.        */
+const PHY=(()=>{
+  const G=1.03228, a=1.5*G, D=11.9, half=D/2;
+  const tauHalf=Math.acosh(1+a*half)/a;          // proper time to midpoint
+  const tauTotal=2*tauHalf;
+  const tHalf=Math.sinh(a*tauHalf)/a;            // Earth time to midpoint
+  function state(tau){                           // mission state at proper time tau
+    tau=clamp(tau,0,tauTotal);
+    if(tau<=tauHalf){
+      const A=a*tau;
+      return {v:Math.tanh(A), g:Math.cosh(A), x:(Math.cosh(A)-1)/a, t:Math.sinh(A)/a, phase:"burn — accelerating"};
+    }
+    const r=tauTotal-tau, A=a*r;                 // mirror of the first half
+    return {v:Math.tanh(A), g:Math.cosh(A),
+      x:D-(Math.cosh(A)-1)/a, t:2*tHalf-Math.sinh(A)/a,
+      phase:tau>=tauTotal-1e-9?"orbit — tau ceti":"burn — decelerating"};
+  }
+  return {a,D,tauTotal,tHalf,state,gamma:v=>1/Math.sqrt(1-v*v)};
+})();
+
+/* ---------- 2. scroll → mission progress ---------- */
+const Mission={p:0,v:0,g:1,tau:0,t:0,x:0,phase:"pre-launch"};
+function updateMission(){
+  const max=document.documentElement.scrollHeight-innerHeight;
+  Mission.p=max>0?clamp(scrollY/max,0,1):0;
+  const s=PHY.state(Mission.p*PHY.tauTotal);
+  Mission.v=s.v; Mission.g=s.g; Mission.x=s.x; Mission.t=s.t;
+  Mission.tau=Mission.p*PHY.tauTotal;
+  Mission.phase=Mission.p<0.005?"pre-launch":s.phase;
+  // flip notice near midpoint
+  if(Mission.p>0.47&&Mission.p<0.53) Mission.phase="flip — turnover";
+  const hud=$("#hud"), pct=Mission.x/PHY.D*100, tT=2*PHY.tHalf;
+  $("#hudPhase").textContent=Mission.phase;
+  hud.classList.toggle("phase-burn",Mission.phase.startsWith("burn"));
+  hud.classList.toggle("phase-flip",Mission.phase.startsWith("flip"));
+  hud.classList.toggle("phase-orbit",Mission.phase.startsWith("orbit"));
+  $("#hudV").textContent=Mission.v.toFixed(4)+" c";
+  $("#hudG").textContent="γ "+(Mission.g<10?Mission.g.toFixed(2):Mission.g.toFixed(1));
+  $("#hudVArc").setAttribute("stroke-dashoffset",(100-Mission.v*100).toFixed(2));
+  $("#hudGArc").setAttribute("stroke-dashoffset",(100-clamp((Mission.g-1)/9.21,0,1)*100).toFixed(2));
+  $("#hudX").textContent=Mission.x.toFixed(2)+" / 11.9 ly";
+  $("#hudBar").style.width=pct+"%";
+  $("#hudShipMark").style.left=pct+"%";
+  $("#hudTau").textContent=Mission.tau.toFixed(2)+" yr";
+  $("#hudT").textContent=Mission.t.toFixed(2)+" yr";
+  $("#hudTauBar").style.width=clamp(Mission.tau/tT*100,0,100)+"%";
+  $("#hudTBar").style.width=clamp(Mission.t/tT*100,0,100)+"%";
+  $("#miniBar").style.width=pct+"%";
+  $("#miniTxt").textContent=Mission.v.toFixed(3)+" c · γ "+Mission.g.toFixed(2)+" · "+Mission.x.toFixed(1)+" ly";
+  // burn gauges (chapter 2) share the live mission state
+  $("#bgV").textContent=Mission.v.toFixed(4)+" c";
+  $("#bgVkm").textContent=Math.round(Mission.v*299792.458).toLocaleString()+" km/s";
+  $("#bgVbar").style.width=(Mission.v*100)+"%";
+  $("#bgX").textContent=Mission.x.toFixed(3)+" ly";
+  $("#bgXbar").style.width=(Mission.x/PHY.D*100)+"%";
+  $("#bgT").textContent=Mission.t.toFixed(2)+" yr";
+  $("#bgTau").textContent="ship: "+Mission.tau.toFixed(2)+" yr";
+  const fuel=100*(1-Mission.p*0.92);             // illustrative reserve
+  $("#bgF").textContent=fuel.toFixed(0)+"%";
+  $("#bgFbar").style.width=fuel+"%";
+}
+addEventListener("scroll",updateMission,{passive:true});
+
+/* ---------- 3. reveal-on-scroll ---------- */
+const io=new IntersectionObserver(es=>es.forEach(e=>{
+  if(e.isIntersecting){e.target.classList.add("in");io.unobserve(e.target);}
+}),{threshold:0.18});
+document.querySelectorAll(".reveal").forEach(el=>io.observe(el));
+
+/* ---------- 4. background starfield (speed-aware, parallax) ---------- */
+const Starfield=(()=>{
+  const cv=$("#stars"); let S,stars=[];
+  function build(){
+    S=sizeCanvas(cv); if(!S)return;
+    const n=Math.min(420,Math.round(S.w*S.h/4200));
+    stars=Array.from({length:n},()=>({
+      x:Math.random()*S.w, y:Math.random()*S.h,
+      z:Math.random()*0.8+0.2,                   // depth → parallax & size
+      tw:Math.random()*Math.PI*2,
+      hue:Math.random()<0.12?200:Math.random()<0.08?28:0 // a few tinted stars
+    }));
+  }
+  function draw(dt){
+    if(!S)return;
+    S.ctx.clearRect(0,0,S.w,S.h);
+    // faint nebulae, drawn as soft radial washes
+    const g1=S.ctx.createRadialGradient(S.w*0.78,S.h*0.22,0,S.w*0.78,S.h*0.22,S.w*0.5);
+    g1.addColorStop(0,"rgba(70,60,160,0.10)");g1.addColorStop(1,"transparent");
+    const g2=S.ctx.createRadialGradient(S.w*0.15,S.h*0.8,0,S.w*0.15,S.h*0.8,S.w*0.45);
+    g2.addColorStop(0,"rgba(20,90,120,0.08)");g2.addColorStop(1,"transparent");
+    S.ctx.fillStyle=g1;S.ctx.fillRect(0,0,S.w,S.h);
+    S.ctx.fillStyle=g2;S.ctx.fillRect(0,0,S.w,S.h);
+    const speed=REDUCED?0:Mission.v;             // stars stream faster as v rises
+    const streak=speed*42;
+    for(const s of stars){
+      s.tw+=dt*2;
+      if(!REDUCED&&!App.paused){ s.x-=(6+streak*3)*s.z*dt*8; if(s.x<-20){s.x=S.w+10;s.y=Math.random()*S.h;} }
+      const a=(0.35+0.4*Math.sin(s.tw))*s.z+0.18;
+      const c=s.hue===200?`rgba(150,200,255,${a})`:s.hue===28?`rgba(255,200,150,${a})`:`rgba(230,238,255,${a})`;
+      S.ctx.strokeStyle=c; S.ctx.fillStyle=c;
+      if(streak>2){                              // motion streaks at high v
+        S.ctx.lineWidth=s.z*1.4; S.ctx.beginPath();
+        S.ctx.moveTo(s.x,s.y); S.ctx.lineTo(s.x+streak*s.z,s.y); S.ctx.stroke();
+      }else{
+        S.ctx.beginPath(); S.ctx.arc(s.x,s.y,s.z*1.3,0,7); S.ctx.fill();
+      }
+    }
+  }
+  build(); addEventListener("resize",build);
+  return {draw};
+})();
+
+/* ---------- 5. chapter 1: interactive Earth ---------- */
+const Earth=(()=>{
+  const cv=$("#earth"); let S, rot=0, zoom=1, dragging=false, lastX=0, vel=0.05;
+  const continents=[                              // stylised landmass blobs [lon, lat, rx, ry]
+    [-100,40,28,16],[-60,-15,20,22],[15,15,26,28],[95,45,42,20],[133,-25,18,11],[25,62,30,9],[-45,72,14,7]
+  ];
+  function build(){S=sizeCanvas(cv);}
+  function draw(dt){
+    if(!S)return;
+    if(!dragging&&!App.paused&&!REDUCED) rot+=vel*dt;
+    const {ctx,w,h}=S, cx=w/2, cy=h/2, R=Math.min(w,h)*0.42*zoom;
+    ctx.clearRect(0,0,w,h);
+    // atmosphere glow
+    const glow=ctx.createRadialGradient(cx,cy,R*0.9,cx,cy,R*1.25);
+    glow.addColorStop(0,"rgba(90,160,255,0.35)");glow.addColorStop(1,"transparent");
+    ctx.fillStyle=glow;ctx.beginPath();ctx.arc(cx,cy,R*1.25,0,7);ctx.fill();
+    // ocean sphere
+    const oc=ctx.createRadialGradient(cx-R*0.4,cy-R*0.45,R*0.1,cx,cy,R);
+    oc.addColorStop(0,"#3e7fd6");oc.addColorStop(0.55,"#1c4a96");oc.addColorStop(1,"#0a1c44");
+    ctx.fillStyle=oc;ctx.beginPath();ctx.arc(cx,cy,R,0,7);ctx.fill();
+    // landmasses, orthographic-ish projection
+    ctx.save();ctx.beginPath();ctx.arc(cx,cy,R,0,7);ctx.clip();
+    for(const [lon,lat,rx,ry] of continents){
+      const L=(lon+rot)%360, rad=(L>180?L-360:L)*Math.PI/180, la=lat*Math.PI/180;
+      const cosr=Math.cos(rad); if(cosr<=-0.15) continue;            // back side
+      const x=cx+Math.sin(rad)*Math.cos(la)*R, y=cy-Math.sin(la)*R;
+      const sq=Math.max(0.08,cosr);
+      ctx.fillStyle=`rgba(98,160,96,${0.5+0.4*cosr})`;
+      ctx.beginPath();ctx.ellipse(x,y,rx*R/100*sq,ry*R/100,0,0,7);ctx.fill();
+    }
+    // cloud streaks + terminator shading
+    ctx.fillStyle="rgba(255,255,255,0.10)";
+    for(let i=0;i<5;i++){const y=cy-R+((i+0.5)/5)*2*R;
+      ctx.beginPath();ctx.ellipse(cx+Math.sin(rot/40+i)*R*0.3,y,R*0.7,R*0.05,0,0,7);ctx.fill();}
+    const term=ctx.createLinearGradient(cx-R,cy,cx+R,cy);
+    term.addColorStop(0,"transparent");term.addColorStop(1,"rgba(2,4,12,0.85)");
+    ctx.fillStyle=term;ctx.fillRect(cx-R,cy-R,2*R,2*R);
+    ctx.restore();
+    // specular highlight
+    ctx.fillStyle="rgba(255,255,255,0.12)";
+    ctx.beginPath();ctx.ellipse(cx-R*0.42,cy-R*0.45,R*0.16,R*0.1,-0.6,0,7);ctx.fill();
+  }
+  cv.addEventListener("pointerdown",e=>{dragging=true;lastX=e.clientX;cv.classList.add("dragging");cv.setPointerCapture(e.pointerId);});
+  cv.addEventListener("pointermove",e=>{if(dragging){rot+=(e.clientX-lastX)*0.5;lastX=e.clientX;}});
+  cv.addEventListener("pointerup",()=>{dragging=false;cv.classList.remove("dragging");});
+  $("#zoomIn").addEventListener("click",()=>zoom=clamp(zoom*1.18,0.6,1.6));
+  $("#zoomOut").addEventListener("click",()=>zoom=clamp(zoom/1.18,0.6,1.6));
+  // hover/tap facts
+  const tip=$("#factTip");
+  document.querySelectorAll(".fact-dot").forEach(d=>{
+    const show=()=>{tip.textContent=d.dataset.tip;tip.classList.add("show");
+      const st=$("#earth-stage").getBoundingClientRect(), r=d.getBoundingClientRect();
+      let x=r.left-st.left+20, y=r.top-st.top-10;
+      x=clamp(x,0,st.width-240); tip.style.left=x+"px"; tip.style.top=clamp(y,0,st.height-90)+"px";};
+    const hide=()=>tip.classList.remove("show");
+    d.addEventListener("mouseenter",show);d.addEventListener("focus",show);
+    d.addEventListener("mouseleave",hide);d.addEventListener("blur",hide);
+    d.addEventListener("click",show);
+  });
+  build();addEventListener("resize",build);
+  return {draw};
+})();
+
+/* ---------- 6. chapter 2: thrust scene ---------- */
+const Thrust=(()=>{
+  const cv=$("#thrust-canvas"); let S, parts=[];
+  function build(){S=sizeCanvas(cv);parts=[];}
+  function ship(ctx,x,y){
+    ctx.save();ctx.translate(x,y);
+    const grad=ctx.createLinearGradient(-70,0,70,0);
+    grad.addColorStop(0,"#cdd8ee");grad.addColorStop(1,"#5a688c");
+    ctx.fillStyle=grad;
+    ctx.beginPath();ctx.moveTo(-78,0);ctx.quadraticCurveTo(-78,-15,-50,-16);
+    ctx.lineTo(46,-13);ctx.quadraticCurveTo(72,-9,72,0);ctx.quadraticCurveTo(72,9,46,13);
+    ctx.lineTo(-50,16);ctx.quadraticCurveTo(-78,15,-78,0);ctx.fill();
+    ctx.fillStyle="rgba(125,240,255,0.85)";                       // cockpit band
+    ctx.fillRect(-58,-5,9,10);
+    ctx.fillStyle="#39456a";ctx.fillRect(58,-11,14,22);           // engine block
+    ctx.restore();
+  }
+  function draw(dt){
+    if(!S)return; const {ctx,w,h}=S; ctx.clearRect(0,0,w,h);
+    const sx=w*0.38, sy=h*0.5, jitter=REDUCED?0:Math.sin(App.time*40)*0.8;
+    // spawn exhaust particles scaled by current thrust illusion
+    if(!App.paused&&!REDUCED){for(let i=0;i<4;i++)parts.push({
+      x:sx+74,y:sy+(Math.random()-0.5)*16,vx:140+Math.random()*180,vy:(Math.random()-0.5)*30,
+      life:1,hue:Math.random()<0.6?28:190});}
+    for(let i=parts.length-1;i>=0;i--){const p=parts[i];
+      p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt*1.5;
+      if(p.life<=0||p.x>w){parts.splice(i,1);continue;}
+      ctx.fillStyle=p.hue===28?`rgba(255,179,92,${p.life*0.8})`:`rgba(125,240,255,${p.life*0.5})`;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.life*4,0,7);ctx.fill();}
+    // exhaust glow column
+    const gl=ctx.createLinearGradient(sx+70,0,sx+260,0);
+    gl.addColorStop(0,"rgba(255,179,92,0.5)");gl.addColorStop(1,"transparent");
+    ctx.fillStyle=gl;ctx.fillRect(sx+70,sy-7,190,14);
+    ship(ctx,sx,sy+jitter);
+    // velocity vector annotation
+    ctx.strokeStyle="rgba(125,240,255,0.5)";ctx.setLineDash([4,5]);ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(sx-90,sy);ctx.lineTo(40,sy);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle="rgba(141,153,184,0.9)";ctx.font="11px 'IBM Plex Mono'";
+    ctx.fillText("→ direction of travel · thrust never stops",18,sy-14);
+  }
+  build();addEventListener("resize",build);
+  return {draw};
+})();
+
+/* ---------- 7. chapter 3: relativity lab ---------- */
+const Lab=(()=>{
+  const slider=$("#vSlider"); let v=0.2; const state={g:1.021,v:0.2};
+  const cv=$("#aberration"); let S, stars=[];
+  function buildStars(){S=sizeCanvas(cv);if(!S)return;
+    stars=Array.from({length:260},()=>({th:Math.random()*Math.PI*2,r:Math.pow(Math.random(),0.5),s:Math.random()*1.4+0.4}));}
+  function set(val){
+    v=val; const g=PHY.gamma(v);
+    $("#labV").textContent=(v*100).toFixed(2)+"% c";
+    $("#labG").textContent="γ = "+(g<100?g.toFixed(3):g.toFixed(1));
+    $("#shipClockVal").textContent=(1/g).toFixed(3)+"×";
+    $("#earthClockVal").textContent="1.000×";
+    const L=100/g;
+    $("#contractShip").style.width=(78*L/100)+"%";
+    $("#contractVal").textContent="L = "+L.toFixed(1)+"% of rest length";
+    state.g=g; state.v=v;
+  }
+  slider.addEventListener("input",()=>set(slider.value/10000));
+  let earthA=0, shipA=0;
+  function draw(dt){
+    // clocks: ship hand turns 1/γ as fast
+    if(!App.paused&&!REDUCED){earthA+=dt*120; shipA+=dt*120/state.g;}
+    $("#earthHand").style.transform=`translateX(-50%) rotate(${earthA}deg)`;
+    $("#shipHand").style.transform=`translateX(-50%) rotate(${shipA}deg)`;
+    // aberration view: star angles compress toward forward axis with v
+    if(!S)return; const {ctx,w,h}=S; ctx.fillStyle="#03050c"; ctx.fillRect(0,0,w,h);
+    const cx=w/2, cy=h/2, maxR=Math.min(w,h)*0.48;
+    for(const st of stars){
+      // relativistic aberration: cosθ' = (cosθ + β)/(1 + β cosθ)
+      const cos0=1-2*st.r*st.r;                  // rest-frame polar angle from forward
+      const cosA=(cos0+state.v)/(1+state.v*cos0);
+      const r=Math.sqrt((1-cosA)/2)*maxR;
+      const x=cx+Math.cos(st.th)*r, y=cy+Math.sin(st.th)*r;
+      // Doppler: forward stars brighten & blueshift
+      const blue=clamp((1-r/maxR)*state.v*1.6,0,1);
+      ctx.fillStyle=`rgba(${Math.round(230-90*blue)},${Math.round(238-30*blue)},255,${0.45+0.55*blue})`;
+      ctx.beginPath();ctx.arc(x,y,st.s*(1+blue),0,7);ctx.fill();
+    }
+    ctx.strokeStyle="rgba(125,240,255,0.25)";ctx.setLineDash([3,5]);
+    ctx.beginPath();ctx.arc(cx,cy,10,0,7);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle="rgba(141,153,184,0.8)";ctx.font="10px 'IBM Plex Mono'";
+    ctx.fillText("forward",cx+16,cy+4);
+  }
+  buildStars();addEventListener("resize",buildStars);
+  set(0.2);
+  return {draw};
+})();
+
+/* ---------- 8. chapter 4: comm delay ---------- */
+const Comm=(()=>{
+  const cv=$("#comm-canvas"); let S, dist=2, photon=null;
+  function build(){S=sizeCanvas(cv);}
+  function setDist(d){dist=d;
+    $("#distVal").textContent=d.toFixed(2)+" light-years";
+    $("#owDelay").textContent=d.toFixed(2)+" yr";
+    $("#rtDelay").textContent=(2*d).toFixed(2)+" yr";}
+  $("#distSlider").addEventListener("input",e=>setDist(+e.target.value));
+  $("#sendBtn").addEventListener("click",()=>{photon={u:0,dir:1};$("#sendBtn").disabled=true;});
+  function draw(dt){
+    if(!S)return; const {ctx,w,h}=S; ctx.clearRect(0,0,w,h);
+    const pad=70, y=h*0.52, x0=pad, x1=w-pad;
+    // route line
+    ctx.strokeStyle="rgba(140,170,255,0.25)";ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x0,y);ctx.lineTo(x1,y);ctx.stroke();
+    // ship (left) and Earth (right)
+    ctx.fillStyle="#9fb2dd";ctx.beginPath();
+    ctx.moveTo(x0-26,y);ctx.lineTo(x0+8,y-9);ctx.lineTo(x0+8,y+9);ctx.closePath();ctx.fill();
+    const eg=ctx.createRadialGradient(x1,y,2,x1,y,16);
+    eg.addColorStop(0,"#7db4ff");eg.addColorStop(1,"#123a7e");
+    ctx.fillStyle=eg;ctx.beginPath();ctx.arc(x1,y,13,0,7);ctx.fill();
+    ctx.fillStyle="rgba(141,153,184,0.9)";ctx.font="10.5px 'IBM Plex Mono'";
+    ctx.textAlign="left";ctx.fillText("ISV CROSSING",x0-26,y+32);
+    ctx.textAlign="right";ctx.fillText("EARTH",x1+13,y+32);
+    ctx.textAlign="center";ctx.fillStyle="rgba(125,240,255,0.7)";
+    ctx.fillText(dist.toFixed(2)+" ly",(x0+x1)/2,y-24);
+    // photon pulse animation (4 s per leg regardless of distance; counter shows real years)
+    if(photon){
+      if(!App.paused)photon.u+=dt/4;
+      let u=photon.u, leg=photon.dir;
+      if(u>=1){ if(leg===1){photon.dir=-1;photon.u=0;u=0;} else {photon=null;$("#sendBtn").disabled=false;} }
+      if(photon){
+        const t=photon.dir===1?photon.u:1-photon.u;
+        const px=lerp(x0+10,x1-14,t);
+        const tr=ctx.createLinearGradient(px-60*photon.dir,y,px,y);
+        tr.addColorStop(0,"transparent");tr.addColorStop(1,"rgba(255,179,92,0.9)");
+        ctx.strokeStyle=tr;ctx.lineWidth=2;
+        ctx.beginPath();ctx.moveTo(px-60*photon.dir,y);ctx.lineTo(px,y);ctx.stroke();
+        ctx.fillStyle="#ffd9a8";ctx.beginPath();ctx.arc(px,y,4,0,7);ctx.fill();
+        ctx.fillStyle="rgba(255,179,92,0.9)";ctx.font="10.5px 'IBM Plex Mono'";
+        const yrs=(photon.dir===1?photon.u:1+photon.u)*dist;
+        ctx.fillText((photon.dir===1?"signal outbound · ":"reply inbound · ")+yrs.toFixed(2)+" yr of real time",w/2,y+58);
+      }
+    } else {
+      ctx.fillStyle="rgba(90,101,133,0.9)";ctx.font="10.5px 'IBM Plex Mono'";
+      ctx.fillText("channel idle — animation runs ~2 billion × real speed",w/2,y+58);
+    }
+    ctx.textAlign="left";
+  }
+  build();addEventListener("resize",build);setDist(2);
+  return {draw};
+})();
+
+/* ---------- 9. chapter 5: interstellar medium ---------- */
+const Medium=(()=>{
+  const cv=$("#medium-canvas"); let S, grains=[], flashes=[];
+  function build(){S=sizeCanvas(cv);grains=[];}
+  function draw(dt){
+    if(!S)return; const {ctx,w,h}=S; ctx.fillStyle="rgba(4,6,14,0.5)";ctx.fillRect(0,0,w,h);
+    const shieldX=w*0.34, sy=h*0.5;
+    if(!App.paused&&!REDUCED&&Math.random()<0.3)
+      grains.push({x:w+10,y:Math.random()*h,v:520+Math.random()*420,big:Math.random()<0.12});
+    for(let i=grains.length-1;i>=0;i--){const gr=grains[i];
+      if(!App.paused)gr.x-=gr.v*dt;
+      // streak (everything arrives head-on at relativistic speed)
+      ctx.strokeStyle=gr.big?"rgba(255,122,110,0.9)":"rgba(200,215,255,0.55)";
+      ctx.lineWidth=gr.big?2:1;
+      ctx.beginPath();ctx.moveTo(gr.x,gr.y);ctx.lineTo(gr.x+gr.v*0.05,gr.y);ctx.stroke();
+      if(gr.x<=shieldX){flashes.push({x:shieldX,y:gr.y,r:gr.big?26:9,life:1,big:gr.big});grains.splice(i,1);}
+    }
+    for(let i=flashes.length-1;i>=0;i--){const f=flashes[i];
+      if(!App.paused)f.life-=dt*2.2;
+      if(f.life<=0){flashes.splice(i,1);continue;}
+      const fg=ctx.createRadialGradient(f.x,f.y,0,f.x,f.y,f.r*(2-f.life));
+      fg.addColorStop(0,f.big?`rgba(255,170,120,${f.life})`:`rgba(180,230,255,${f.life*0.9})`);
+      fg.addColorStop(1,"transparent");
+      ctx.fillStyle=fg;ctx.beginPath();ctx.arc(f.x,f.y,f.r*(2-f.life),0,7);ctx.fill();}
+    // Whipple shield + standoff + hull
+    ctx.fillStyle="rgba(125,240,255,0.16)";
+    ctx.fillRect(shieldX-5,h*0.08,7,h*0.84);
+    ctx.fillStyle="rgba(125,240,255,0.7)";
+    ctx.fillRect(shieldX-2,h*0.08,2,h*0.84);
+    const hull=ctx.createLinearGradient(0,0,shieldX*0.8,0);
+    hull.addColorStop(0,"#222c4c");hull.addColorStop(1,"#46557e");
+    ctx.fillStyle=hull;
+    ctx.beginPath();ctx.moveTo(-10,sy-34);ctx.lineTo(shieldX-70,sy-30);
+    ctx.quadraticCurveTo(shieldX-38,sy,shieldX-70,sy+30);ctx.lineTo(-10,sy+34);ctx.closePath();ctx.fill();
+    ctx.fillStyle="rgba(141,153,184,0.9)";ctx.font="10.5px 'IBM Plex Mono'";
+    ctx.fillText("ablative whipple shield",shieldX+12,h*0.14);
+    ctx.fillText("standoff gap — debris from impacts disperses here",shieldX-280,h*0.9);
+  }
+  build();addEventListener("resize",build);
+  return {draw};
+})();
+
+/* ---------- 10. chapter 6: cutaway diagram ---------- */
+(()=>{
+  const svg=$("#cutaway"), NS="http://www.w3.org/2000/svg";
+  const parts=[
+    {id:"shield",label:"Whipple shield",d:"M30,90 L70,98 L78,150 L70,202 L30,210 Q14,150 30,90 Z",
+     body:"A multi-layer sacrificial bumper flown at the bow. Incoming grains vaporise on the first layer; the standoff gap lets the resulting plasma spread before it reaches the hull. The single most-replaced part of the ship.",
+     stat:"mass budget ≈ 18% · consumable"},
+    {id:"nav",label:"Navigation & sensors",d:"M86,110 L150,104 L150,196 L86,190 Z",
+     body:"Pulsar-timing receivers, star trackers and a forward telescope that doubles as a hazard scanner. Mounted just behind the shield with periscoped optics — nothing delicate points straight into the slipstream.",
+     stat:"position fix accuracy ≈ 0.01 AU"},
+    {id:"habitat",label:"Crew habitat",d:"M158,96 L268,90 L268,210 L158,204 Z",
+     body:"Three hibernation pods, a small lab and a control deck. Under constant 1.5 g thrust the floor faces the engines, so the habitat is stacked like a tower lying on its side. Surrounded on all sides by water and stores as radiation mass.",
+     stat:"pressurised volume ≈ 110 m³"},
+    {id:"life",label:"Life support",d:"M276,92 L340,90 L340,210 L276,208 Z",
+     body:"Closed-loop water recycling, oxygen generation and CO₂ scrubbing — sized for a sleeping crew, with surge capacity for the awake phases at departure and arrival. Hibernation cuts its consumables budget by roughly an order of magnitude.",
+     stat:"loop closure ≈ 98% water · 90% O₂"},
+    {id:"shielding",label:"Radiation shielding",d:"M348,88 L412,86 L412,214 L348,212 Z",
+     body:"No exotic materials: tanks of water and polyethylene-lined walls wrapped around the crew section. Hydrogen-rich matter is the best practical absorber of cosmic-ray showers. The crew literally sleeps inside the water supply.",
+     stat:"≈ 1 m water-equivalent around pods"},
+    {id:"comms",label:"Communication array",d:"M420,92 L470,96 L470,204 L420,208 Z",
+     body:"A steerable high-gain dish facing aft toward Sol, transmitting the science record home — one-way. By mid-cruise the link is an archive channel, not a conversation: round-trip latency is measured in years.",
+     stat:"link budget: kbps at 6 ly"},
+    {id:"fuel",label:"Propellant tanks",d:"M478,86 L600,80 L600,220 L478,214 Z",
+     body:"The brutal arithmetic of the rocket equation: most of an interstellar ship is the stuff it throws away. Tankage dominates the airframe, and the structure lightens dramatically as the voyage proceeds — which the autopilot exploits, trimming thrust to hold exactly 1.5 g.",
+     stat:"launch mass fraction ≈ 70%"},
+    {id:"engines",label:"Spin-drive engines",d:"M608,84 L660,96 L700,120 L700,180 L660,204 L608,216 Z",
+     body:"The novel's spin drive is fiction, but its job description is real: convert mass to thrust with near-perfect efficiency. Real candidates — fusion torches, beamed-energy sails, antimatter — all trade among thrust, efficiency and not melting the ship.",
+     stat:"sustained thrust: 1.5 g · years"},
+  ];
+  // backbone hull outline
+  const hull=document.createElementNS(NS,"path");
+  hull.setAttribute("d","M26,86 L600,76 Q716,96 716,150 Q716,204 600,224 L26,214 Q6,150 26,86 Z");
+  hull.setAttribute("fill","rgba(20,28,54,0.6)");hull.setAttribute("stroke","rgba(140,170,255,0.35)");
+  svg.appendChild(hull);
+  const card={eb:$("#pcEyebrow"),t:$("#pcTitle"),b:$("#pcBody"),s:$("#pcStat")};
+  let active=null;
+  parts.forEach((p,i)=>{
+    const g=document.createElementNS(NS,"g");
+    g.setAttribute("class","part");g.setAttribute("tabindex","0");g.setAttribute("role","button");
+    g.setAttribute("aria-label",p.label);
+    const path=document.createElementNS(NS,"path");
+    path.setAttribute("d",p.d);path.setAttribute("class","fill");
+    path.setAttribute("fill","rgba(125,240,255,0.07)");
+    path.setAttribute("stroke","rgba(140,170,255,0.5)");path.setAttribute("stroke-width","1");
+    const tx=document.createElementNS(NS,"text");
+    tx.textContent=String(i+1).padStart(2,"0");
+    const m=p.d.match(/M([\d.]+),([\d.]+)/);
+    tx.setAttribute("x",+m[1]+10);tx.setAttribute("y",+m[2]+22);
+    tx.setAttribute("fill","rgba(125,240,255,0.8)");
+    tx.setAttribute("font-family","IBM Plex Mono");tx.setAttribute("font-size","11");
+    g.appendChild(path);g.appendChild(tx);
+    const select=()=>{
+      if(active)active.classList.remove("active");
+      active=g;g.classList.add("active");
+      card.eb.textContent="System "+String(i+1).padStart(2,"0");
+      card.t.textContent=p.label;card.b.textContent=p.body;card.s.textContent=p.stat;
+    };
+    g.addEventListener("click",select);
+    g.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();select();}});
+    svg.appendChild(g);
+  });
+})();
+
+/* ---------- 11. chapter 7: hibernation pod ---------- */
+const Pod=(()=>{
+  const svg=$("#pod"), NS="http://www.w3.org/2000/svg";
+  svg.innerHTML=`
+    <defs>
+      <linearGradient id="podGlass" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="rgba(125,240,255,0.22)"/><stop offset="1" stop-color="rgba(125,240,255,0.04)"/>
+      </linearGradient>
+    </defs>
+    <rect x="34" y="20" width="192" height="300" rx="86" fill="url(#podGlass)" stroke="rgba(140,170,255,0.5)" stroke-width="1.5"/>
+    <rect x="52" y="38" width="156" height="264" rx="72" fill="rgba(8,12,26,0.65)" stroke="rgba(140,170,255,0.2)"/>
+    <ellipse cx="130" cy="96" rx="22" ry="26" fill="rgba(190,205,235,0.85)"/>
+    <rect x="104" y="126" width="52" height="98" rx="22" fill="rgba(170,185,220,0.8)"/>
+    <rect x="92" y="232" width="30" height="62" rx="14" fill="rgba(170,185,220,0.75)"/>
+    <rect x="138" y="232" width="30" height="62" rx="14" fill="rgba(170,185,220,0.75)"/>
+    <polyline id="ekg" points="" fill="none" stroke="#7dffb0" stroke-width="1.6" stroke-linejoin="round"/>
+    <text x="58" y="318" fill="#5a6585" font-family="IBM Plex Mono" font-size="9" letter-spacing="2">POD 02 · TORPOR</text>
+    <text id="bpm" x="130" y="334" fill="#7dffb0" font-family="IBM Plex Mono" font-size="10" text-anchor="middle">— bpm</text>`;
+  const ekg=svg.querySelector("#ekg"), bpmEl=svg.querySelector("#bpm");
+  let phase=0;
+  function draw(dt){
+    const slow=clamp(Mission.g,1,10.21);                  // tie pulse to mission gamma
+    const bpm=Math.round(60/slow*10)/10;
+    bpmEl.textContent=bpm.toFixed(1)+" bpm (slowed "+slow.toFixed(1)+"×)";
+    if(!App.paused&&!REDUCED)phase+=dt*(bpm/60)*1.6;
+    let pts="";
+    for(let i=0;i<=60;i++){
+      const x=60+i*2.3, t=(i/60*2+phase)%1;
+      let y=270;                                           // baseline
+      if(t>0.42&&t<0.5)y=270-Math.sin((t-0.42)/0.08*Math.PI)*26;  // QRS spike
+      else if(t>0.55&&t<0.68)y=270-Math.sin((t-0.55)/0.13*Math.PI)*7;
+      pts+=`${x},${y} `;
+    }
+    ekg.setAttribute("points",pts.trim());
+  }
+  return {draw};
+})();
+
+/* ---------- 12. chapter 8: star map ---------- */
+const Map=(()=>{
+  const cv=$("#map-canvas"); let S;
+  // real-ish neighbourhood, ly coordinates projected to a plane (x = toward Tau Ceti)
+  const stars=[
+    {n:"Sun",x:0,y:0,c:"#ffd27a",r:5},
+    {n:"Tau Ceti",x:11.9,y:0,c:"#ffca8a",r:4.5},
+    {n:"α Centauri",x:1.3,y:4.2,c:"#ffe9b0",r:3.4},
+    {n:"Barnard's Star",x:3.2,y:-5.2,c:"#ff9d7a",r:2.4},
+    {n:"Sirius",x:-2.4,y:8.3,c:"#cfe4ff",r:3.8},
+    {n:"ε Eridani",x:9.1,y:4.4,c:"#ffc89a",r:2.8},
+    {n:"Procyon",x:-4.8,y:10.2,c:"#ffeecf",r:2.8},
+    {n:"Lalande 21185",x:0.6,y:8.2,c:"#ff9d7a",r:2},
+    {n:"Wolf 359",x:2.1,y:7.5,c:"#ff8d6e",r:1.7},
+    {n:"YZ Ceti",x:10.6,y:-2.3,c:"#ff9d7a",r:1.7},
+    {n:"Luyten 726-8",x:7.9,y:-2.8,c:"#ff9d7a",r:1.8},
+    {n:"ε Indi",x:6.1,y:-9.6,c:"#ffc89a",r:2.2},
+  ];
+  const view={x:5.95,y:0,scale:34}, home={...view};
+  let dragging=false,lx=0,ly=0,pinch=null;
+  function build(){S=sizeCanvas(cv);}
+  const sx=p=>S.w/2+(p.x-view.x)*view.scale;
+  const sy=p=>S.h/2-(p.y-view.y)*view.scale;
+  function draw(){
+    if(!S)return; const {ctx,w,h}=S; ctx.fillStyle="#03050c";ctx.fillRect(0,0,w,h);
+    // distance rings around Sol
+    ctx.strokeStyle="rgba(140,170,255,0.12)";ctx.fillStyle="rgba(90,101,133,0.8)";
+    ctx.font="9.5px 'IBM Plex Mono'";
+    for(const R of [5,10,15]){
+      ctx.beginPath();ctx.arc(sx(stars[0]),sy(stars[0]),R*view.scale,0,7);ctx.stroke();
+      ctx.fillText(R+" ly",sx(stars[0])+R*view.scale+4,sy(stars[0]));
+    }
+    // trajectory Sol → Tau Ceti
+    const a=stars[0],b=stars[1];
+    ctx.strokeStyle="rgba(125,240,255,0.55)";ctx.setLineDash([5,6]);ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.moveTo(sx(a),sy(a));ctx.lineTo(sx(b),sy(b));ctx.stroke();ctx.setLineDash([]);
+    // ship at live mission position, with pulsing marker
+    const shipP={x:Mission.x,y:0};
+    const pul=REDUCED?0:Math.sin(App.time*3)*2;
+    ctx.fillStyle="rgba(125,240,255,0.25)";
+    ctx.beginPath();ctx.arc(sx(shipP),sy(shipP),9+pul,0,7);ctx.fill();
+    ctx.fillStyle="#7df0ff";
+    ctx.beginPath();ctx.arc(sx(shipP),sy(shipP),3.4,0,7);ctx.fill();
+    ctx.fillStyle="rgba(125,240,255,0.95)";ctx.font="10px 'IBM Plex Mono'";
+    ctx.fillText("ISV CROSSING · "+Mission.x.toFixed(2)+" ly",sx(shipP)+12,sy(shipP)-10);
+    // stars
+    for(const st of stars){
+      const x=sx(st),y=sy(st);
+      const g=ctx.createRadialGradient(x,y,0,x,y,st.r*3.2);
+      g.addColorStop(0,st.c);g.addColorStop(1,"transparent");
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,st.r*3.2,0,7);ctx.fill();
+      ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(x,y,st.r*0.7,0,7);ctx.fill();
+      ctx.fillStyle="rgba(223,230,245,0.85)";ctx.font="10.5px 'IBM Plex Mono'";
+      ctx.fillText(st.n,x+st.r*2.4+4,y+4);
+    }
+  }
+  cv.addEventListener("pointerdown",e=>{dragging=true;lx=e.clientX;ly=e.clientY;cv.classList.add("dragging");cv.setPointerCapture(e.pointerId);});
+  cv.addEventListener("pointermove",e=>{if(!dragging)return;
+    view.x-=(e.clientX-lx)/view.scale; view.y+=(e.clientY-ly)/view.scale; lx=e.clientX;ly=e.clientY;});
+  cv.addEventListener("pointerup",()=>{dragging=false;cv.classList.remove("dragging");});
+  cv.addEventListener("wheel",e=>{e.preventDefault();
+    view.scale=clamp(view.scale*(e.deltaY<0?1.12:0.89),10,160);},{passive:false});
+  $("#mapZoomIn").addEventListener("click",()=>view.scale=clamp(view.scale*1.25,10,160));
+  $("#mapZoomOut").addEventListener("click",()=>view.scale=clamp(view.scale/1.25,10,160));
+  $("#mapReset").addEventListener("click",()=>Object.assign(view,home));
+  build();addEventListener("resize",build);
+  return {draw};
+})();
+
+/* ---------- 13. chapter 9: arrival ---------- */
+const Arrival=(()=>{
+  const cv=$("#arrival-canvas"); let S, field=[];
+  function build(){S=sizeCanvas(cv);if(!S)return;
+    field=Array.from({length:130},()=>({x:Math.random(),y:Math.random(),z:Math.random()*0.8+0.2}));}
+  function draw(dt){
+    if(!S)return; const {ctx,w,h}=S; ctx.fillStyle="#03050c";ctx.fillRect(0,0,w,h);
+    // progress within the final stretch of the page (last 12% of scroll)
+    const k=clamp((Mission.p-0.86)/0.14,0,1);
+    // residual streaking fades as v drops; star grows with k
+    const streak=(1-k)*Mission.v*30;
+    for(const f of field){
+      if(!App.paused&&!REDUCED){f.x-=(0.02+streak*0.004)*f.z*dt*4;if(f.x<0)f.x+=1;}
+      const x=f.x*w,y=f.y*h,a=0.3+0.5*f.z;
+      ctx.strokeStyle=`rgba(225,235,255,${a})`;ctx.lineWidth=f.z;
+      ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+streak*f.z,y);ctx.stroke();
+    }
+    // Tau Ceti grows and brightens
+    const cxs=w*0.62, cys=h*0.46, R=lerp(4,46,k*k);
+    const halo=ctx.createRadialGradient(cxs,cys,0,cxs,cys,R*4);
+    halo.addColorStop(0,`rgba(255,214,150,${0.5+0.5*k})`);
+    halo.addColorStop(0.25,`rgba(255,180,100,${0.3*k+0.1})`);halo.addColorStop(1,"transparent");
+    ctx.fillStyle=halo;ctx.beginPath();ctx.arc(cxs,cys,R*4,0,7);ctx.fill();
+    const core=ctx.createRadialGradient(cxs-R*0.3,cys-R*0.3,0,cxs,cys,R);
+    core.addColorStop(0,"#fff6e6");core.addColorStop(1,"#ffb35c");
+    ctx.fillStyle=core;ctx.beginPath();ctx.arc(cxs,cys,R,0,7);ctx.fill();
+    // orbital-insertion ellipse + ship, appearing near the end
+    if(k>0.55){
+      const ka=(k-0.55)/0.45;
+      ctx.strokeStyle=`rgba(125,240,255,${0.6*ka})`;ctx.setLineDash([4,6]);ctx.lineWidth=1.2;
+      ctx.beginPath();ctx.ellipse(cxs,cys,R*2.6,R*1.5,-0.4,0,7);ctx.stroke();ctx.setLineDash([]);
+      const ang=App.time*0.7;
+      const ox=cxs+Math.cos(ang)*R*2.6*Math.cos(-0.4)-Math.sin(ang)*R*1.5*Math.sin(-0.4);
+      const oy=cys+Math.cos(ang)*R*2.6*Math.sin(-0.4)+Math.sin(ang)*R*1.5*Math.cos(-0.4);
+      ctx.fillStyle=`rgba(223,230,245,${ka})`;ctx.beginPath();ctx.arc(ox,oy,3,0,7);ctx.fill();
+      ctx.fillStyle=`rgba(141,153,184,${ka})`;ctx.font="10.5px 'IBM Plex Mono'";
+      ctx.fillText("orbital insertion",cxs-R*2.4,cys+R*2.2);
+    }
+    ctx.fillStyle="rgba(141,153,184,0.85)";ctx.font="10.5px 'IBM Plex Mono'";
+    ctx.fillText("TAU CETI · G8V · keep scrolling to decelerate",16,24);
+  }
+  build();addEventListener("resize",build);
+  return {draw};
+})();
+
+/* ---------- 14. master animation loop ---------- */
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(0.05,(now-last)/1000); last=now;
+  if(!App.paused)App.time+=dt;
+  Starfield.draw(dt); Earth.draw(dt); Thrust.draw(dt); Lab.draw(dt);
+  Comm.draw(dt); Medium.draw(dt); Pod.draw(dt); Map.draw(dt); Arrival.draw(dt);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+updateMission();
+
+/* ---------- 15. global controls ---------- */
+const pauseBtn=$("#pauseBtn");
+pauseBtn.addEventListener("click",()=>{
+  App.paused=!App.paused;
+  document.body.classList.toggle("paused",App.paused);
+  pauseBtn.textContent=App.paused?"▶ resume motion":"⏸ pause motion";
+  pauseBtn.setAttribute("aria-pressed",String(App.paused));
+});
+// HUD minimize tab
+const hudEl=$("#hud"), hudMinBtn=$("#hudMin");
+hudMinBtn.addEventListener("click",()=>{
+  const min=hudEl.classList.toggle("min");
+  document.body.classList.toggle("hud-min",min);
+  hudMinBtn.textContent=min?"▴":"▾";
+  hudMinBtn.setAttribute("aria-expanded",String(!min));
+  hudMinBtn.setAttribute("aria-label",min?"Expand mission HUD":"Minimize mission HUD");
+});
+// chapter navigator
+const chapNav=$("#chapnav");
+$("#chaptersBtn").addEventListener("click",()=>{chapNav.hidden=false;$("#cnClose").focus();});
+$("#cnClose").addEventListener("click",()=>chapNav.hidden=true);
+chapNav.addEventListener("click",e=>{if(e.target===chapNav||e.target.closest("a"))chapNav.hidden=true;});
+addEventListener("keydown",e=>{if(e.key==="Escape")chapNav.hidden=true;});
+function restart(){scrollTo({top:0,behavior:REDUCED?"auto":"smooth"});}
+$("#restartBtn").addEventListener("click",restart);
+$("#restartBtn2").addEventListener("click",restart);
+// keyboard: space toggles pause when not on a control
+addEventListener("keydown",e=>{
+  if(e.key===" "&&!/BUTTON|INPUT|A/.test(document.activeElement.tagName)){
+    e.preventDefault();pauseBtn.click();
+  }
+});
+</script>
+</body>
+</html>
